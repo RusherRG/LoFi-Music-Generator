@@ -2,6 +2,8 @@ import os
 import pickle
 
 import music21
+import torch
+
 from torch.utils.data import Dataset
 from models.constants import *
 
@@ -11,7 +13,6 @@ class LoFiMIDIDataset(Dataset):
         self.dataset_dir = dataset_dir
         self.data, self.vocab = self._load_data()
         self.vocab_size = len(self.vocab)
-
         self.dataset = self._preprocess(self.data)
 
     def _process_midi(self, midi: music21.stream.Score):
@@ -31,7 +32,7 @@ class LoFiMIDIDataset(Dataset):
             elif isinstance(part, music21.note.Rest):
                 notes.append("R")
             elif isinstance(part, music21.chord.Chord):
-                notes.append(".".join(p.nameWithOctave for p in part.notes))
+                notes.append(".".join(str(n) for n in part.normalOrder))
 
         return notes
 
@@ -50,7 +51,6 @@ class LoFiMIDIDataset(Dataset):
             midi = music21.converter.parse(os.path.join(self.dataset_dir, midi_file))
             notes = self._process_midi(midi)
             data.append(notes)
-
         all_notes = [note for notes in data for note in notes]
         vocab = self._generate_vocab(all_notes)
         return data, vocab
@@ -59,7 +59,7 @@ class LoFiMIDIDataset(Dataset):
         """
         Parse the notes to generate a vocab dictionary of vocab_id and the note
         """
-        notes = set(notes.sort())
+        notes = sorted(set(note for note in notes))
         vocab = {note: vocab_id for vocab_id, note in enumerate(notes)}
         return vocab
 
@@ -69,7 +69,7 @@ class LoFiMIDIDataset(Dataset):
         """
         inputs_targets = []
         for sample in data:
-            for i in range(0, len(sample), MELODY_LENGTH):
+            for i in range(0, len(sample) - MELODY_LENGTH, MELODY_LENGTH):
                 sequence = sample[i : i + MELODY_LENGTH]
                 sequence_ids = [self.vocab[s] for s in sequence]
                 inputs_targets.append((sequence_ids[:-1], sequence_ids[-1]))
@@ -79,10 +79,20 @@ class LoFiMIDIDataset(Dataset):
         """
         Return a sample at given index from the dataset
         """
-        return self.dataset[index]
+        inputs = torch.tensor(self.dataset[index][0], dtype=torch.long)
+        targets = torch.tensor(self.dataset[index][1], dtype=torch.long)
+        return inputs, targets
 
     def __len__(self):
         """
         Return the length of the dataset
         """
         return len(self.dataset)
+
+    def get_notes(self, melody):
+        """
+        Map the note_ids to the notes
+        """
+        reverse_vocab = {vocab_id: vocab for (vocab, vocab_id) in self.vocab.items()}
+        notes = [reverse_vocab[note] for note in melody]
+        return notes
