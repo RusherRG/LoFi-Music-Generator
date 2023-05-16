@@ -10,6 +10,7 @@ class LoFiLSTM(nn.Module):
         super(LoFiLSTM, self).__init__()
         self.vocab_size = vocab_size
 
+        # we need melody embedding to convert the string notes to an embedding
         self.melody_embedding = nn.Embedding(
             num_embeddings=self.vocab_size, embedding_dim=MELODY_EMBEDDING_SIZE
         )
